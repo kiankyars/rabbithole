@@ -118,8 +118,9 @@ def _ts_to_dt(ts):
 
 def insert_conversations(conversations: list[dict], user_id: str = None):
     """Insert conversations and messages into Postgres."""
+    prefix = f"{user_id}:" if user_id else ""
     conv_params = [
-        (c["id"], user_id, c["title"], c["created_at"], c["updated_at"], c["message_count"], c["model_slug"])
+        (prefix + c["id"], user_id, c["title"], c["created_at"], c["updated_at"], c["message_count"], c["model_slug"])
         for c in conversations
     ]
     execute_batch(
@@ -132,8 +133,9 @@ def insert_conversations(conversations: list[dict], user_id: str = None):
 
     msg_params = []
     for c in conversations:
+        cid = prefix + c["id"]
         for m in c["messages"]:
-            msg_params.append((m["id"], c["id"], m["role"], m["content"], m["created_at"]))
+            msg_params.append((prefix + m["id"], cid, m["role"], m["content"], m["created_at"]))
 
     execute_batch(
         """INSERT INTO messages (id, conversation_id, role, content, created_at)
@@ -143,14 +145,19 @@ def insert_conversations(conversations: list[dict], user_id: str = None):
     )
     print(f"Inserted {len(msg_params)} messages.")
 
+    # Update conversation IDs in parsed data so rabbit hole extraction uses prefixed IDs
+    for c in conversations:
+        c["_prefixed_id"] = prefix + c["id"]
+
 
 def extract_rabbit_holes(conversations: list[dict], user_id: str = None):
     """Use DeepSeek to classify conversations into rabbit holes."""
+    prefix = f"{user_id}:" if user_id else ""
     # Filter out trivial conversations (< 4 messages)
     substantive = [c for c in conversations if c["message_count"] >= 4]
     print(f"Classifying {len(substantive)} substantive conversations into rabbit holes...")
 
-    # Build summaries for DeepSeek
+    # Build summaries for DeepSeek (use original IDs for the LLM, map to prefixed later)
     summaries = []
     for c in substantive:
         first_msgs = " | ".join(
@@ -190,9 +197,11 @@ def extract_rabbit_holes(conversations: list[dict], user_id: str = None):
     cur = conn.cursor()
 
     for rh in merged.values():
-        conv_ids = rh.get("conversation_ids", [])
+        raw_conv_ids = rh.get("conversation_ids", [])
+        # Prefix conversation IDs to match what's in the DB
+        conv_ids = [prefix + cid for cid in raw_conv_ids]
         # Compute priority: more conversations + more messages = higher priority
-        conv_data = [c for c in conversations if c["id"] in conv_ids]
+        conv_data = [c for c in conversations if c["id"] in raw_conv_ids]
         total_msgs = sum(c["message_count"] for c in conv_data)
         recency_bonus = 0
         if conv_data:
