@@ -316,6 +316,7 @@ def deduplicate_rabbit_holes(user_id: str = None):
     cur.close()
     conn.close()
     print(f"Merged {merged} duplicate rabbit holes.")
+    return merged
 
 
 if __name__ == "__main__":

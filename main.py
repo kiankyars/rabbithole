@@ -7,7 +7,7 @@ from datetime import datetime, timezone, date
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, BackgroundTasks, UploadFile, File, Form
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -20,7 +20,7 @@ load_dotenv(override=True)
 from db import execute, execute_one, get_conn
 from agent import run_cycle, run_cycle_all_users
 from models import apply_schema
-from ingest import run_from_bytes
+from ingest import run_from_bytes, run as ingest_run, deduplicate_rabbit_holes
 
 import markdown as md
 
@@ -128,6 +128,54 @@ def _background_setup(file_data: bytes, user_id: str):
 async def logout(request: Request):
     request.session.clear()
     return RedirectResponse("/welcome", status_code=303)
+
+
+DEMO_USER_ID = "demo"
+_ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+_DEMO_JSON = _ASSETS_DIR / "conversations.json"
+
+
+@app.get("/assets/conversations.json")
+async def serve_demo_conversations():
+    """Serve the demo conversations.json so the welcome page can link to it."""
+    if not _DEMO_JSON.exists():
+        return JSONResponse({"error": "Demo asset not found"}, status_code=404)
+    return FileResponse(_DEMO_JSON, media_type="application/json")
+
+
+@app.post("/demo")
+async def demo_login(request: Request):
+    """Log in as demo user, seeding from assets/conversations.json if needed."""
+    conn = get_conn()
+    conn.autocommit = True
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM users WHERE id = %s", (DEMO_USER_ID,))
+    if cur.fetchone() is None:
+        cur.execute("INSERT INTO users (id, name) VALUES (%s, %s)", (DEMO_USER_ID, "Demo User"))
+    cur.execute("SELECT COUNT(*) as n FROM conversations WHERE user_id = %s", (DEMO_USER_ID,))
+    row = cur.fetchone()
+    n = row[0] if row else 0
+    cur.close()
+    conn.close()
+
+    if n == 0 and _DEMO_JSON.exists():
+        # Seed demo user from assets (sync so first load shows data)
+        _seed_demo_user()
+
+    request.session["user_id"] = DEMO_USER_ID
+    return RedirectResponse("/", status_code=303)
+
+
+def _seed_demo_user():
+    ingest_run(str(_DEMO_JSON), user_id=DEMO_USER_ID)
+    run_cycle(num_holes=5, user_id=DEMO_USER_ID)
+
+
+@app.get("/admin/deduplicate")
+async def admin_deduplicate():
+    """One-time merge of duplicate rabbit holes (same normalized name per user)."""
+    merged = deduplicate_rabbit_holes()
+    return JSONResponse({"status": "ok", "merged": merged, "message": f"Merged {merged} duplicate rabbit holes."})
 
 
 # --- Dashboard Routes ---

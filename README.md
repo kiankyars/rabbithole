@@ -2,8 +2,6 @@
 
 > Upload your ChatGPT history. An AI agent finds your rabbit holes, researches them while you sleep, and tells you what to do every morning.
 
-**Live:** [rabbithole-td04.onrender.com](https://rabbithole-td04.onrender.com)
-
 ---
 
 ## The Problem
@@ -72,11 +70,11 @@ uv run uvicorn main:app --port 8000  # start dashboard
 
 Python, FastAPI, PostgreSQL, DeepSeek V3.2 (Akash ML), You.com Search API, Render, uv
 
-RabbitHole -- Autonomous Personal Knowledge Agent
+## Devpost Submission
 
-You've had hundreds of conversations with ChatGPT. That knowledge is trapped in a chat log -- you never go back, you never follow through.
+RabbitHole: Autonomous Personal Knowledge Agent
 
-RabbitHole solves this problem. You upload your ChatGPT export, and an autonomous agent takes over.
+You've had hundreds of conversations with ChatGPT. That knowledge is trapped in a chat log. RabbitHole solves this problem. You upload your ChatGPT export, and an autonomous agent takes over.
 
 Step 1: DeepSeek V3.2 on Akash ML reads all your conversations and extracts your rabbit holes -- the recurring topics you keep returning to.
 
