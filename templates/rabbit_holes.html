@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}RabbitHole - All Rabbit Holes{% endblock %}
+{% block content %}
+
+<div class="section-title">All Rabbit Holes</div>
+
+<div class="card">
+    {% if holes %}
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Description</th>
+                <th>Priority</th>
+                <th>Convs</th>
+                <th>Insights</th>
+                <th>Last Researched</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for h in holes %}
+            <tr>
+                <td><a href="/rabbit-holes/{{ h.id }}">{{ h.name }}</a></td>
+                <td style="color: var(--text-dim); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ h.description[:100] }}</td>
+                <td>
+                    <div class="priority-bar" style="width: 80px;">
+                        <div class="fill" style="width: {{ [h.priority_score * 3, 100] | min }}%"></div>
+                    </div>
+                    <span style="font-size: 0.7rem; color: var(--text-dim);">{{ "%.1f" | format(h.priority_score) }}</span>
+                </td>
+                <td>{{ h.conv_count }}</td>
+                <td>{{ h.insight_count }}</td>
+                <td style="font-size: 0.75rem; color: var(--text-dim);">{{ h.last_researched_at or 'Never' }}</td>
+                <td><span class="badge badge-active">{{ h.status }}</span></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+        <div class="empty">No rabbit holes found. Run ingestion to extract topics from your ChatGPT history.</div>
+    {% endif %}
+</div>
+
+{% endblock %}

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}RabbitHole - {{ hole.name }}{% endblock %}
+{% block content %}
+
+<div style="margin-bottom: 1.5rem;">
+    <div class="section-title">{{ hole.name }}</div>
+    <p style="color: var(--text-dim); font-size: 0.875rem;">{{ hole.description }}</p>
+    <div style="display: flex; gap: 1rem; margin-top: 0.75rem;">
+        <span class="badge badge-active">{{ hole.status }}</span>
+        <span style="font-size: 0.75rem; color: var(--text-dim);">Priority: {{ "%.1f" | format(hole.priority_score) }}</span>
+        <span style="font-size: 0.75rem; color: var(--text-dim);">Last researched: {{ hole.last_researched_at or 'Never' }}</span>
+    </div>
+</div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <h2>Linked Conversations ({{ conversations | length }})</h2>
+        {% for c in conversations %}
+        <div class="hole-row">
+            <span class="name" style="cursor: default;">{{ c.title }}</span>
+            <span class="meta">{{ c.message_count }} msgs</span>
+            <span class="meta">{{ c.created_at }}</span>
+        </div>
+        {% endfor %}
+        {% if not conversations %}
+        <div class="empty">No conversations linked.</div>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <h2>Insights ({{ insights | length }})</h2>
+        {% for i in insights %}
+        <div class="insight-item">
+            <span class="badge badge-{{ i.urgency }}">{{ i.urgency }}</span>
+            {% if i.grounded %}<span class="badge" style="background: var(--green); color: #000;">grounded</span>{% endif %}
+            <div class="text">{{ i.content }}</div>
+            <div class="time">{{ i.created_at }}</div>
+        </div>
+        {% endfor %}
+        {% if not insights %}
+        <div class="empty">No insights yet. Run the agent to research this topic.</div>
+        {% endif %}
+    </div>
+</div>
+
+{% if runs %}
+<div class="card" style="margin-top: 1.5rem;">
+    <h2>Research Runs</h2>
+    <table>
+        <thead>
+            <tr><th>ID</th><th>Queries</th><th>Date</th></tr>
+        </thead>
+        <tbody>
+            {% for r in runs %}
+            <tr>
+                <td>{{ r.id }}</td>
+                <td style="font-size: 0.8rem;">{{ r.query_sent[:200] }}</td>
+                <td style="font-size: 0.75rem; color: var(--text-dim);">{{ r.created_at }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% endblock %}

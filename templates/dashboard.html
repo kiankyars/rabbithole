@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}RabbitHole - Dashboard{% endblock %}
+{% block content %}
+
+<div class="stat-grid">
+    <div class="stat">
+        <div class="number">{{ stats.total_conversations or 0 }}</div>
+        <div class="label">Conversations</div>
+    </div>
+    <div class="stat">
+        <div class="number">{{ stats.active_holes or 0 }}</div>
+        <div class="label">Rabbit Holes</div>
+    </div>
+    <div class="stat">
+        <div class="number">{{ stats.total_insights or 0 }}</div>
+        <div class="label">Insights</div>
+    </div>
+    <div class="stat">
+        <div class="number">{{ stats.total_runs or 0 }}</div>
+        <div class="label">Research Runs</div>
+    </div>
+</div>
+
+<div class="grid grid-2">
+    <div class="card" style="grid-column: 1 / -1;">
+        <h2>Today's Action Plan</h2>
+        {% if plan %}
+            <div class="plan-content">{{ plan.plan_json }}</div>
+        {% else %}
+            <div class="empty">No plan generated yet. Click "Run Agent" to generate one.</div>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <h2>Top Rabbit Holes</h2>
+        {% if holes %}
+            {% for h in holes[:10] %}
+            <div class="hole-row">
+                <a href="/rabbit-holes/{{ h.id }}" class="name">{{ h.name }}</a>
+                <span class="meta">{{ h.conv_count }} convs / {{ h.insight_count }} insights</span>
+                <div class="priority-bar">
+                    <div class="fill" style="width: {{ [h.priority_score * 3, 100] | min }}%"></div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty">No rabbit holes yet. Run ingestion first.</div>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <h2>Recent Insights</h2>
+        {% if recent_insights %}
+            {% for i in recent_insights %}
+            <div class="insight-item">
+                <span class="topic">{{ i.rabbit_hole_name }}</span>
+                <span class="badge badge-{{ i.urgency }}">{{ i.urgency }}</span>
+                <div class="text">{{ i.content[:300] }}</div>
+                <div class="time">{{ i.created_at }}</div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty">No insights yet. Run the agent to discover insights.</div>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
