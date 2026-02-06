@@ -61,21 +61,70 @@ def parse_conversations(filepath: str) -> list[dict]:
     return conversations
 
 
+def parse_conversations_bytes(data: bytes) -> list[dict]:
+    """Parse conversations.json from raw bytes."""
+    raw = json.loads(data)
+    conversations = []
+    for conv in raw:
+        conv_id = conv.get("conversation_id") or conv.get("id", "")
+        title = conv.get("title") or "Untitled"
+        created_at = _ts_to_dt(conv.get("create_time"))
+        updated_at = _ts_to_dt(conv.get("update_time"))
+        model_slug = conv.get("default_model_slug")
+
+        messages = []
+        mapping = conv.get("mapping", {})
+        for node_id, node in mapping.items():
+            msg = node.get("message")
+            if not msg:
+                continue
+            role = msg.get("author", {}).get("role")
+            if role not in ("user", "assistant"):
+                continue
+            content = msg.get("content", {})
+            parts = content.get("parts", [])
+            text_parts = [p for p in parts if isinstance(p, str) and p.strip()]
+            if not text_parts:
+                continue
+            text = "\n".join(text_parts)
+            msg_created = _ts_to_dt(msg.get("create_time"))
+            messages.append({
+                "id": node_id,
+                "role": role,
+                "content": text,
+                "created_at": msg_created,
+            })
+
+        messages.sort(key=lambda m: m["created_at"] or datetime.min.replace(tzinfo=timezone.utc))
+
+        conversations.append({
+            "id": conv_id,
+            "title": title,
+            "created_at": created_at,
+            "updated_at": updated_at,
+            "model_slug": model_slug,
+            "messages": messages,
+            "message_count": len(messages),
+        })
+
+    return conversations
+
+
 def _ts_to_dt(ts):
     if ts is None:
         return None
     return datetime.fromtimestamp(ts, tz=timezone.utc)
 
 
-def insert_conversations(conversations: list[dict]):
+def insert_conversations(conversations: list[dict], user_id: str = None):
     """Insert conversations and messages into Postgres."""
     conv_params = [
-        (c["id"], c["title"], c["created_at"], c["updated_at"], c["message_count"], c["model_slug"])
+        (c["id"], user_id, c["title"], c["created_at"], c["updated_at"], c["message_count"], c["model_slug"])
         for c in conversations
     ]
     execute_batch(
-        """INSERT INTO conversations (id, title, created_at, updated_at, message_count, model_slug)
-           VALUES (%s, %s, %s, %s, %s, %s)
+        """INSERT INTO conversations (id, user_id, title, created_at, updated_at, message_count, model_slug)
+           VALUES (%s, %s, %s, %s, %s, %s, %s)
            ON CONFLICT (id) DO NOTHING""",
         conv_params,
     )
@@ -95,7 +144,7 @@ def insert_conversations(conversations: list[dict]):
     print(f"Inserted {len(msg_params)} messages.")
 
 
-def extract_rabbit_holes(conversations: list[dict]):
+def extract_rabbit_holes(conversations: list[dict], user_id: str = None):
     """Use DeepSeek to classify conversations into rabbit holes."""
     # Filter out trivial conversations (< 4 messages)
     substantive = [c for c in conversations if c["message_count"] >= 4]
@@ -153,9 +202,9 @@ def extract_rabbit_holes(conversations: list[dict]):
         priority = len(conv_ids) * 2 + total_msgs * 0.1 + recency_bonus
 
         cur.execute(
-            """INSERT INTO rabbit_holes (name, description, priority_score)
-               VALUES (%s, %s, %s) RETURNING id""",
-            (rh["name"], rh.get("description", ""), round(priority, 2)),
+            """INSERT INTO rabbit_holes (user_id, name, description, priority_score)
+               VALUES (%s, %s, %s, %s) RETURNING id""",
+            (user_id, rh["name"], rh.get("description", ""), round(priority, 2)),
         )
         rh_id = cur.fetchone()[0]
 
@@ -173,18 +222,33 @@ def extract_rabbit_holes(conversations: list[dict]):
     print(f"Created {len(merged)} rabbit holes.")
 
 
-def run(filepath: str):
+def run(filepath: str, user_id: str = None):
     print(f"Parsing {filepath}...")
     conversations = parse_conversations(filepath)
     print(f"Found {len(conversations)} conversations with {sum(c['message_count'] for c in conversations)} total messages.")
 
     print("Inserting into database...")
-    insert_conversations(conversations)
+    insert_conversations(conversations, user_id=user_id)
 
     print("Extracting rabbit holes via DeepSeek...")
-    extract_rabbit_holes(conversations)
+    extract_rabbit_holes(conversations, user_id=user_id)
 
     print("Ingestion complete.")
+
+
+def run_from_bytes(data: bytes, user_id: str):
+    """Run ingestion from raw bytes (for upload endpoint)."""
+    print(f"Parsing uploaded file for user {user_id}...")
+    conversations = parse_conversations_bytes(data)
+    print(f"Found {len(conversations)} conversations with {sum(c['message_count'] for c in conversations)} total messages.")
+
+    print("Inserting into database...")
+    insert_conversations(conversations, user_id=user_id)
+
+    print("Extracting rabbit holes via DeepSeek...")
+    extract_rabbit_holes(conversations, user_id=user_id)
+
+    print("Ingestion complete for user", user_id)
 
 
 if __name__ == "__main__":
