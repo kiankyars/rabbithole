@@ -1,0 +1,15 @@
+[project]
+name = "rabbithole"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.11"
+dependencies = [
+    "apscheduler>=3.11.2",
+    "fastapi>=0.128.3",
+    "httpx>=0.28.1",
+    "jinja2>=3.1.6",
+    "markdown>=3.10.1",
+    "psycopg2-binary>=2.9.11",
+    "python-dotenv>=1.2.1",
+    "uvicorn[standard]>=0.40.0",
+]

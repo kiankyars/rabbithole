@@ -1,15 +1,18 @@
 import os
+from pathlib import Path
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load from ~/.env (user's global env) then project .env
+load_dotenv(Path.home() / ".env")
+load_dotenv(override=True)
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 
 def get_conn():
-    return psycopg2.connect(DATABASE_URL)
+    return psycopg2.connect(DATABASE_URL, sslmode="require")
 
 
 def execute(query, params=None, fetch=False):

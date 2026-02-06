@@ -160,10 +160,12 @@ def extract_rabbit_holes(conversations: list[dict]):
         rh_id = cur.fetchone()[0]
 
         for cid in conv_ids:
+            # Only link if conversation actually exists (DeepSeek may hallucinate IDs)
             cur.execute(
                 """INSERT INTO rabbit_hole_conversations (rabbit_hole_id, conversation_id)
-                   VALUES (%s, %s) ON CONFLICT DO NOTHING""",
-                (rh_id, cid),
+                   SELECT %s, %s WHERE EXISTS (SELECT 1 FROM conversations WHERE id = %s)
+                   ON CONFLICT DO NOTHING""",
+                (rh_id, cid, cid),
             )
 
     cur.close()

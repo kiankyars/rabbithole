@@ -4,23 +4,26 @@ import os
 import httpx
 from dotenv import load_dotenv
 
-load_dotenv()
+from pathlib import Path
+load_dotenv(Path.home() / ".env")
+load_dotenv(override=True)
 
 YOU_API_KEY = os.getenv("YOU_API_KEY", "")
-YOU_BASE_URL = "https://api.ydc-index.io/search"
+YOU_BASE_URL = "https://ydc-index.io/v1/search"
 
 
 def search(query: str, num_results: int = 5) -> list[dict]:
     """Search You.com and return structured results."""
     resp = httpx.get(
         YOU_BASE_URL,
-        params={"query": query, "num_web_results": num_results},
+        params={"query": query, "count": num_results},
         headers={"X-API-Key": YOU_API_KEY},
         timeout=30.0,
     )
     resp.raise_for_status()
     data = resp.json()
-    hits = data.get("hits", [])
+    results_data = data.get("results", {})
+    hits = results_data.get("web", [])
     results = []
     for hit in hits:
         snippets = hit.get("snippets", [])

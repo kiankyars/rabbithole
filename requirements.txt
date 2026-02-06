@@ -1,7 +1,0 @@
-fastapi
-uvicorn[standard]
-psycopg2-binary
-httpx
-python-dotenv
-jinja2
-apscheduler

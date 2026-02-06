@@ -5,11 +5,13 @@ import json
 import httpx
 from dotenv import load_dotenv
 
-load_dotenv()
+from pathlib import Path
+load_dotenv(Path.home() / ".env")
+load_dotenv(override=True)
 
-AKASH_API_KEY = os.getenv("AKASH_API_KEY", "")
-AKASH_BASE_URL = os.getenv("AKASH_BASE_URL", "https://chatapi.akash.network/api/v1")
-AKASH_MODEL = os.getenv("AKASH_MODEL", "DeepSeek-V3-0324")
+AKASH_ML_API_KEY = os.getenv("AKASH_ML_API_KEY", "")
+AKASH_BASE_URL = os.getenv("AKASH_BASE_URL", "https://api.akashml.com/v1")
+AKASH_MODEL = os.getenv("AKASH_MODEL", "deepseek-ai/DeepSeek-V3.2")
 
 
 def chat(messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096) -> str:
@@ -17,7 +19,7 @@ def chat(messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096)
     resp = httpx.post(
         f"{AKASH_BASE_URL}/chat/completions",
         headers={
-            "Authorization": f"Bearer {AKASH_API_KEY}",
+            "Authorization": f"Bearer {AKASH_ML_API_KEY}",
             "Content-Type": "application/json",
         },
         json={

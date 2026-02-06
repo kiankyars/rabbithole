@@ -9,9 +9,11 @@ from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from apscheduler.schedulers.background import BackgroundScheduler
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(Path.home() / ".env")
+load_dotenv(override=True)
 
 from db import execute, execute_one
 from agent import run_cycle
@@ -35,6 +37,13 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="RabbitHole", lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
+
+import markdown as md
+
+def render_markdown(text: str) -> str:
+    return md.markdown(text or "", extensions=["extra"])
+
+templates.env.filters["markdown"] = render_markdown
 
 
 def scheduled_research():

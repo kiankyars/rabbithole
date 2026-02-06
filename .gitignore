@@ -4,6 +4,4 @@ __pycache__/
 .env
 .DS_Store
 *.pdf
-chat.html
-conversations.json
 conversations.json
