@@ -71,3 +71,19 @@ uv run uvicorn main:app --port 8000  # start dashboard
 ## Stack
 
 Python, FastAPI, PostgreSQL, DeepSeek V3.2 (Akash ML), You.com Search API, Render, uv
+
+RabbitHole -- Autonomous Personal Knowledge Agent
+
+You've had hundreds of conversations with ChatGPT. That knowledge is trapped in a chat log -- you never go back, you never follow through.
+
+RabbitHole solves this problem. You upload your ChatGPT export, and an autonomous agent takes over.
+
+Step 1: DeepSeek V3.2 on Akash ML reads all your conversations and extracts your rabbit holes -- the recurring topics you keep returning to.
+
+Step 2: Every 6 hours, with zero human input, the agent selects your stalest, highest-priority rabbit holes and generates research queries. Each query is grounded with live web results from the You.com Search API -- so nothing is hallucinated. DeepSeek then synthesizes these findings into scored insights.
+
+Step 3: The system builds a daily action plan for you. When you open your dashboard, it will tell you, for example: your language learning is high urgency, spend 25 minutes on a conversation session; your RL research has a new paper, read the abstract; your side project can wait.
+
+All data -- conversations, rabbit holes, insights, plans -- is stored in Postgres on Render. The dashboard runs as a FastAPI app deployed on Render with auto-deploy from GitHub.
+
+The main idea is autonomy. You upload once and walk away. The agent continues researching while you sleep. New users just enter their name, drop in their conversations.json, and the background pipeline takes care of everything from classification to the first research cycle.

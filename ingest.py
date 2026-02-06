@@ -5,6 +5,7 @@ import sys
 from datetime import datetime, timezone
 
 from db import execute, execute_one, execute_batch, get_conn
+from psycopg2.extras import RealDictCursor
 from services.akash import classify_conversations
 
 
@@ -116,6 +117,14 @@ def _ts_to_dt(ts):
     return datetime.fromtimestamp(ts, tz=timezone.utc)
 
 
+def _normalize_rh_name(name: str) -> str:
+    """Normalize for dedup: 'Language Learning & Practice' == 'Language Learning and Practice'."""
+    if not name:
+        return ""
+    s = name.lower().strip().replace("&", "and")
+    return " ".join(s.split())
+
+
 def insert_conversations(conversations: list[dict], user_id: str = None):
     """Insert conversations and messages into Postgres."""
     prefix = f"{user_id}:" if user_id else ""
@@ -181,26 +190,31 @@ def extract_rabbit_holes(conversations: list[dict], user_id: str = None):
         holes = classify_conversations(batch)
         all_holes.extend(holes)
 
-    # Merge rabbit holes with the same name (case-insensitive)
+    # Merge rabbit holes by normalized name (so "X & Y" and "X and Y" become one)
     merged = {}
     for rh in all_holes:
-        key = rh["name"].lower().strip()
+        key = _normalize_rh_name(rh["name"])
         if key in merged:
             merged[key]["conversation_ids"].extend(rh.get("conversation_ids", []))
             merged[key]["conversation_ids"] = list(set(merged[key]["conversation_ids"]))
         else:
             merged[key] = rh
 
-    # Insert rabbit holes and link conversations
     conn = get_conn()
     conn.autocommit = True
     cur = conn.cursor()
 
+    # Load existing rabbit holes for this user so we reuse instead of duplicating
+    existing_by_norm = {}
+    if user_id:
+        cur.execute("SELECT id, name FROM rabbit_holes WHERE user_id = %s", (user_id,))
+        for row in cur.fetchall():
+            existing_by_norm[_normalize_rh_name(row["name"])] = row["id"]
+
+    created = 0
     for rh in merged.values():
         raw_conv_ids = rh.get("conversation_ids", [])
-        # Prefix conversation IDs to match what's in the DB
         conv_ids = [prefix + cid for cid in raw_conv_ids]
-        # Compute priority: more conversations + more messages = higher priority
         conv_data = [c for c in conversations if c["id"] in raw_conv_ids]
         total_msgs = sum(c["message_count"] for c in conv_data)
         recency_bonus = 0
@@ -209,16 +223,21 @@ def extract_rabbit_holes(conversations: list[dict], user_id: str = None):
             days_ago = (datetime.now(timezone.utc) - latest).days
             recency_bonus = max(0, 10 - days_ago * 0.1)
         priority = len(conv_ids) * 2 + total_msgs * 0.1 + recency_bonus
+        norm = _normalize_rh_name(rh["name"])
 
-        cur.execute(
-            """INSERT INTO rabbit_holes (user_id, name, description, priority_score)
-               VALUES (%s, %s, %s, %s) RETURNING id""",
-            (user_id, rh["name"], rh.get("description", ""), round(priority, 2)),
-        )
-        rh_id = cur.fetchone()[0]
+        if norm in existing_by_norm:
+            rh_id = existing_by_norm[norm]
+        else:
+            cur.execute(
+                """INSERT INTO rabbit_holes (user_id, name, description, priority_score)
+                   VALUES (%s, %s, %s, %s) RETURNING id""",
+                (user_id, rh["name"], rh.get("description", ""), round(priority, 2)),
+            )
+            rh_id = cur.fetchone()[0]
+            existing_by_norm[norm] = rh_id
+            created += 1
 
         for cid in conv_ids:
-            # Only link if conversation actually exists (DeepSeek may hallucinate IDs)
             cur.execute(
                 """INSERT INTO rabbit_hole_conversations (rabbit_hole_id, conversation_id)
                    SELECT %s, %s WHERE EXISTS (SELECT 1 FROM conversations WHERE id = %s)
@@ -228,7 +247,7 @@ def extract_rabbit_holes(conversations: list[dict], user_id: str = None):
 
     cur.close()
     conn.close()
-    print(f"Created {len(merged)} rabbit holes.")
+    print(f"Created {created} new rabbit holes, linked to {len(merged)} topics.")
 
 
 def run(filepath: str, user_id: str = None):
@@ -258,6 +277,45 @@ def run_from_bytes(data: bytes, user_id: str):
     extract_rabbit_holes(conversations, user_id=user_id)
 
     print("Ingestion complete for user", user_id)
+
+
+def deduplicate_rabbit_holes(user_id: str = None):
+    """Merge duplicate rabbit holes (same normalized name) for a user or all users."""
+    conn = get_conn()
+    conn.autocommit = False
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute(
+        "SELECT id, user_id, name FROM rabbit_holes" + (" WHERE user_id = %s" if user_id else ""),
+        (user_id,) if user_id else None,
+    )
+    rows = cur.fetchall()
+    by_key = {}
+    for r in rows:
+        key = (r["user_id"], _normalize_rh_name(r["name"]))
+        by_key.setdefault(key, []).append(r)
+
+    merged = 0
+    for (uid, norm), group in by_key.items():
+        if len(group) <= 1:
+            continue
+        keep = min(group, key=lambda r: r["id"])
+        dupes = [r for r in group if r["id"] != keep["id"]]
+        for d in dupes:
+            cur.execute(
+                """INSERT INTO rabbit_hole_conversations (rabbit_hole_id, conversation_id)
+                   SELECT %s, conversation_id FROM rabbit_hole_conversations WHERE rabbit_hole_id = %s
+                   ON CONFLICT DO NOTHING""",
+                (keep["id"], d["id"]),
+            )
+            cur.execute("DELETE FROM rabbit_hole_conversations WHERE rabbit_hole_id = %s", (d["id"],))
+            cur.execute("UPDATE insights SET rabbit_hole_id = %s WHERE rabbit_hole_id = %s", (keep["id"], d["id"]))
+            cur.execute("UPDATE research_runs SET rabbit_hole_id = %s WHERE rabbit_hole_id = %s", (keep["id"], d["id"]))
+            cur.execute("DELETE FROM rabbit_holes WHERE id = %s", (d["id"],))
+            merged += 1
+    conn.commit()
+    cur.close()
+    conn.close()
+    print(f"Merged {merged} duplicate rabbit holes.")
 
 
 if __name__ == "__main__":
