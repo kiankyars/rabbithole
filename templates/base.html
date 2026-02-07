@@ -219,17 +219,34 @@
         async function triggerAgent(btn) {
             btn.disabled = true;
             btn.textContent = 'Running...';
-            const resp = await fetch('/agent/run', { method: 'POST' });
-            const data = await resp.json();
-            if (data.status === 'already_running') {
-                btn.textContent = 'Already Running';
-            } else {
-                btn.textContent = 'Agent Started';
-            }
-            setTimeout(() => {
+            let resp;
+            try {
+                resp = await fetch('/agent/run', { method: 'POST' });
+                var data = await resp.json();
+            } catch (e) {
                 btn.disabled = false;
                 btn.textContent = 'Run Agent';
-            }, 30000);
+                alert('Request failed: ' + e.message);
+                return;
+            }
+            if (data.status === 'already_running') {
+                btn.disabled = false;
+                btn.textContent = 'Run Agent';
+                return;
+            }
+            const poll = setInterval(async () => {
+                const s = await fetch('/agent/status').then(r => r.json());
+                if (!s.running) {
+                    clearInterval(poll);
+                    btn.disabled = false;
+                    btn.textContent = 'Run Agent';
+                    if (s.error) {
+                        alert('Agent error: ' + s.error);
+                    } else {
+                        window.location.reload();
+                    }
+                }
+            }, 3000);
         }
     </script>
 </body>

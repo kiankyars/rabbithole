@@ -21,7 +21,7 @@ from models import apply_schema
 
 
 scheduler = BackgroundScheduler()
-AGENT_STATUS = {"last_run": None, "running": False, "runs_completed": 0}
+AGENT_STATUS = {"last_run": None, "running": False, "runs_completed": 0, "error": None}
 
 
 @asynccontextmanager
@@ -84,10 +84,15 @@ def _dedupe_rabbit_holes(holes: list) -> list:
 def scheduled_research():
     """Background scheduled research cycle."""
     AGENT_STATUS["running"] = True
+    AGENT_STATUS["error"] = None
     AGENT_STATUS["last_run"] = datetime.now(timezone.utc).isoformat()
-    run_cycle(num_holes=5)
-    AGENT_STATUS["running"] = False
-    AGENT_STATUS["runs_completed"] += 1
+    try:
+        run_cycle(num_holes=5)
+        AGENT_STATUS["runs_completed"] += 1
+    except Exception as e:
+        AGENT_STATUS["error"] = str(e)
+    finally:
+        AGENT_STATUS["running"] = False
 
 
 # --- Dashboard Routes ---
