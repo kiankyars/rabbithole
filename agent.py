@@ -8,18 +8,8 @@ from services.akash import generate_research_queries, synthesize_research, gener
 from services.yousearch import search_and_format
 
 
-def get_stale_rabbit_holes(limit: int = 5, user_id: str = None) -> list[dict]:
+def get_stale_rabbit_holes(limit: int = 5) -> list[dict]:
     """Get rabbit holes most in need of research, sorted by priority and staleness."""
-    if user_id:
-        return execute(
-            """SELECT id, name, description, priority_score, last_researched_at, status
-               FROM rabbit_holes
-               WHERE status = 'active' AND user_id = %s
-               ORDER BY last_researched_at ASC NULLS FIRST, priority_score DESC
-               LIMIT %s""",
-            (user_id, limit),
-            fetch=True,
-        )
     return execute(
         """SELECT id, name, description, priority_score, last_researched_at, status
            FROM rabbit_holes
@@ -100,37 +90,22 @@ def research_rabbit_hole(rh: dict) -> dict:
     return synthesis
 
 
-def build_daily_plan(user_id: str = None):
+def build_daily_plan():
     """Generate and store a daily action plan."""
-    if user_id:
-        holes = execute(
-            """SELECT rh.id, rh.name, rh.description, rh.priority_score, rh.last_researched_at,
-                      i.content AS latest_insight, i.urgency
-               FROM rabbit_holes rh
-               LEFT JOIN LATERAL (
-                   SELECT content, urgency FROM insights
-                   WHERE rabbit_hole_id = rh.id
-                   ORDER BY created_at DESC LIMIT 1
-               ) i ON true
-               WHERE rh.status = 'active' AND rh.user_id = %s
-               ORDER BY rh.priority_score DESC""",
-            (user_id,),
-            fetch=True,
-        )
-    else:
-        holes = execute(
-            """SELECT rh.id, rh.name, rh.description, rh.priority_score, rh.last_researched_at,
-                      i.content AS latest_insight, i.urgency
-               FROM rabbit_holes rh
-               LEFT JOIN LATERAL (
-                   SELECT content, urgency FROM insights
-                   WHERE rabbit_hole_id = rh.id
-                   ORDER BY created_at DESC LIMIT 1
-               ) i ON true
-               WHERE rh.status = 'active'
-               ORDER BY rh.priority_score DESC""",
-            fetch=True,
-        )
+    # Get all active rabbit holes with their latest insights
+    holes = execute(
+        """SELECT rh.id, rh.name, rh.description, rh.priority_score, rh.last_researched_at,
+                  i.content AS latest_insight, i.urgency
+           FROM rabbit_holes rh
+           LEFT JOIN LATERAL (
+               SELECT content, urgency FROM insights
+               WHERE rabbit_hole_id = rh.id
+               ORDER BY created_at DESC LIMIT 1
+           ) i ON true
+           WHERE rh.status = 'active'
+           ORDER BY rh.priority_score DESC""",
+        fetch=True,
+    )
 
     plan_text = generate_daily_plan(holes)
 
@@ -138,10 +113,10 @@ def build_daily_plan(user_id: str = None):
     conn.autocommit = True
     cur = conn.cursor()
     cur.execute(
-        """INSERT INTO daily_plans (user_id, plan_date, plan_json)
-           VALUES (%s, %s, %s)
-           ON CONFLICT (user_id, plan_date) DO UPDATE SET plan_json = EXCLUDED.plan_json, created_at = NOW()""",
-        (user_id, date.today(), plan_text),
+        """INSERT INTO daily_plans (plan_date, plan_json)
+           VALUES (%s, %s)
+           ON CONFLICT (plan_date) DO UPDATE SET plan_json = EXCLUDED.plan_json, created_at = NOW()""",
+        (date.today(), plan_text),
     )
     cur.close()
     conn.close()
@@ -149,11 +124,11 @@ def build_daily_plan(user_id: str = None):
     return plan_text
 
 
-def run_cycle(num_holes: int = 5, user_id: str = None):
+def run_cycle(num_holes: int = 5):
     """Run one full autonomous research cycle."""
-    print(f"[{datetime.now(timezone.utc).isoformat()}] Starting research cycle (user={user_id})...")
+    print(f"[{datetime.now(timezone.utc).isoformat()}] Starting research cycle...")
 
-    holes = get_stale_rabbit_holes(limit=num_holes, user_id=user_id)
+    holes = get_stale_rabbit_holes(limit=num_holes)
     if not holes:
         print("No active rabbit holes to research.")
         return
@@ -164,19 +139,10 @@ def run_cycle(num_holes: int = 5, user_id: str = None):
         research_rabbit_hole(rh)
 
     print("\nGenerating daily plan...")
-    plan = build_daily_plan(user_id=user_id)
+    plan = build_daily_plan()
     print(f"\nDaily plan generated:\n{plan[:500]}...")
 
     print(f"\n[{datetime.now(timezone.utc).isoformat()}] Research cycle complete.")
-
-
-def run_cycle_all_users(num_holes: int = 5):
-    """Run research cycle for all users with active rabbit holes."""
-    users = execute("SELECT DISTINCT user_id FROM rabbit_holes WHERE status = 'active'", fetch=True)
-    for row in (users or []):
-        uid = row["user_id"]
-        print(f"\n--- Running cycle for user {uid} ---")
-        run_cycle(num_holes=num_holes, user_id=uid)
 
 
 if __name__ == "__main__":

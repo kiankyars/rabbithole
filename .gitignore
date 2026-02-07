@@ -3,5 +3,5 @@ __pycache__/
 *.pyc
 .env
 .DS_Store
+*.pdf
 conversations.json
-!assets/conversations.json

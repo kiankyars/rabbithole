@@ -2,17 +2,9 @@
 
 from db import get_conn
 
-# Base schema for fresh installs
 SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    name TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
 CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
-    user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
     title TEXT,
     created_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ,
@@ -31,7 +23,6 @@ CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id);
 
 CREATE TABLE IF NOT EXISTS rabbit_holes (
     id SERIAL PRIMARY KEY,
-    user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     description TEXT,
     status TEXT DEFAULT 'active',
@@ -69,14 +60,10 @@ CREATE TABLE IF NOT EXISTS research_runs (
 
 CREATE TABLE IF NOT EXISTS daily_plans (
     id SERIAL PRIMARY KEY,
-    user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
-    plan_date DATE,
+    plan_date DATE UNIQUE,
     plan_json TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(user_id, plan_date)
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id);
-CREATE INDEX IF NOT EXISTS idx_rabbit_holes_user ON rabbit_holes(user_id);
 """
 
 
