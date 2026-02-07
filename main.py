@@ -131,7 +131,10 @@ async def logout(request: Request):
 
 
 DEMO_USER_ID = "demo"
-_ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+_APP_DIR = Path(__file__).resolve().parent
+_ASSETS_DIR = _APP_DIR / "assets"
+# Prefer project-root conversations.json (your full export) for demo; fallback to assets sample
+_ROOT_CONVERSATIONS = _APP_DIR / "conversations.json"
 _DEMO_JSON = _ASSETS_DIR / "conversations.json"
 
 
@@ -158,16 +161,18 @@ async def demo_login(request: Request):
     cur.close()
     conn.close()
 
-    if n == 0 and _DEMO_JSON.exists():
-        # Seed demo user from assets (sync so first load shows data)
-        _seed_demo_user()
+    if n == 0:
+        # Seed demo: use project-root conversations.json if present (your 300), else assets sample
+        demo_path = _ROOT_CONVERSATIONS if _ROOT_CONVERSATIONS.exists() else _DEMO_JSON
+        if demo_path.exists():
+            _seed_demo_user(demo_path)
 
     request.session["user_id"] = DEMO_USER_ID
     return RedirectResponse("/", status_code=303)
 
 
-def _seed_demo_user():
-    ingest_run(str(_DEMO_JSON), user_id=DEMO_USER_ID)
+def _seed_demo_user(filepath: Path):
+    ingest_run(str(filepath), user_id=DEMO_USER_ID)
     run_cycle(num_holes=5, user_id=DEMO_USER_ID)
 
 
