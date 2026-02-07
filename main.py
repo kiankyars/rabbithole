@@ -137,7 +137,7 @@ _DEMO_JSON = _ASSETS_DIR / "conversations.json"
 
 @app.get("/assets/conversations.json")
 async def serve_demo_conversations():
-    """Serve the demo conversations.json so the welcome page can link to it."""
+    """Serve the demo conversations.json (same format as ChatGPT export)."""
     if not _DEMO_JSON.exists():
         return JSONResponse({"error": "Demo asset not found"}, status_code=404)
     return FileResponse(_DEMO_JSON, media_type="application/json")
