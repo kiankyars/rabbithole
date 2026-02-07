@@ -72,30 +72,11 @@ CREATE TABLE IF NOT EXISTS daily_plans (
     user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
     plan_date DATE,
     plan_json TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, plan_date)
 );
-"""
-
-# Migration for existing installs: add user_id columns + indexes
-MIGRATE_SQL = """
-ALTER TABLE conversations ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE rabbit_holes ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE daily_plans ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE;
-
 CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id);
 CREATE INDEX IF NOT EXISTS idx_rabbit_holes_user ON rabbit_holes(user_id);
-
--- Drop old unique constraint on plan_date and add user-scoped one
-ALTER TABLE daily_plans DROP CONSTRAINT IF EXISTS daily_plans_plan_date_key;
-CREATE UNIQUE INDEX IF NOT EXISTS daily_plans_user_date ON daily_plans(user_id, plan_date);
-"""
-
-# Backfill: create a default user for any orphaned data
-BACKFILL_SQL = """
-INSERT INTO users (id, name) VALUES ('default', 'Default User') ON CONFLICT DO NOTHING;
-UPDATE conversations SET user_id = 'default' WHERE user_id IS NULL;
-UPDATE rabbit_holes SET user_id = 'default' WHERE user_id IS NULL;
-UPDATE daily_plans SET user_id = 'default' WHERE user_id IS NULL;
 """
 
 
@@ -104,8 +85,6 @@ def apply_schema():
     conn.autocommit = True
     cur = conn.cursor()
     cur.execute(SCHEMA_SQL)
-    cur.execute(MIGRATE_SQL)
-    cur.execute(BACKFILL_SQL)
     cur.close()
     conn.close()
     print("Schema applied successfully.")
