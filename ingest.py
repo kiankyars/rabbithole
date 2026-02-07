@@ -1,6 +1,7 @@
 """Ingest ChatGPT conversations.json into Postgres and extract rabbit holes."""
 
 import json
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -125,10 +126,16 @@ def extract_rabbit_holes(conversations: list[dict]):
         holes = classify_conversations(batch)
         all_holes.extend(holes)
 
-    # Merge rabbit holes with the same name (case-insensitive)
+    # Merge rabbit holes with the same name (case-insensitive, " and " vs " & " normalized)
+    def norm_name(s):
+        s = (s or "").lower().strip()
+        s = re.sub(r"\s+and\s+", " & ", s)
+        s = re.sub(r"\s+", " ", s)
+        return s
+
     merged = {}
     for rh in all_holes:
-        key = rh["name"].lower().strip()
+        key = norm_name(rh["name"])
         if key in merged:
             merged[key]["conversation_ids"].extend(rh.get("conversation_ids", []))
             merged[key]["conversation_ids"] = list(set(merged[key]["conversation_ids"]))

@@ -46,6 +46,41 @@ def render_markdown(text: str) -> str:
 templates.env.filters["markdown"] = render_markdown
 
 
+def _normalize_hole_name(name: str) -> str:
+    """Normalize for deduping: 'X and Y' vs 'X & Y' etc."""
+    import re
+    s = (name or "").lower().strip()
+    s = re.sub(r"\s+and\s+", " & ", s)
+    s = re.sub(r"\s+", " ", s)
+    return s
+
+
+def _dedupe_rabbit_holes(holes: list) -> list:
+    """Collapse rows with same normalized name; keep highest priority, sum counts."""
+    by_key = {}
+    for h in holes or []:
+        key = _normalize_hole_name(h.get("name") or "")
+        if not key:
+            continue
+        if key not in by_key:
+            by_key[key] = dict(h)
+            by_key[key]["conv_count"] = int(h.get("conv_count") or 0)
+            by_key[key]["insight_count"] = int(h.get("insight_count") or 0)
+        else:
+            by_key[key]["conv_count"] += int(h.get("conv_count") or 0)
+            by_key[key]["insight_count"] += int(h.get("insight_count") or 0)
+            if (h.get("priority_score") or 0) > (by_key[key].get("priority_score") or 0):
+                by_key[key]["id"] = h["id"]
+                by_key[key]["name"] = h["name"]
+                by_key[key]["description"] = h.get("description")
+                by_key[key]["priority_score"] = h.get("priority_score")
+                by_key[key]["last_researched_at"] = h.get("last_researched_at")
+                by_key[key]["status"] = h.get("status")
+                if "created_at" in h:
+                    by_key[key]["created_at"] = h["created_at"]
+    return list(by_key.values())
+
+
 def scheduled_research():
     """Background scheduled research cycle."""
     AGENT_STATUS["running"] = True
@@ -66,8 +101,8 @@ async def dashboard(request: Request):
         (date.today(),),
     )
 
-    # Top rabbit holes
-    holes = execute(
+    # Top rabbit holes (fetch extra then dedupe by normalized name so we get ~20 unique)
+    raw_holes = execute(
         """SELECT rh.id, rh.name, rh.description, rh.priority_score, rh.last_researched_at, rh.status,
                   COUNT(DISTINCT rhc.conversation_id) as conv_count,
                   (SELECT COUNT(*) FROM insights WHERE rabbit_hole_id = rh.id) as insight_count
@@ -76,9 +111,10 @@ async def dashboard(request: Request):
            WHERE rh.status = 'active'
            GROUP BY rh.id
            ORDER BY rh.priority_score DESC
-           LIMIT 20""",
+           LIMIT 60""",
         fetch=True,
     )
+    holes = sorted(_dedupe_rabbit_holes(raw_holes), key=lambda h: (h.get("priority_score") or 0), reverse=True)[:20]
 
     # Recent insights
     recent_insights = execute(
@@ -111,7 +147,7 @@ async def dashboard(request: Request):
 
 @app.get("/rabbit-holes", response_class=HTMLResponse)
 async def list_rabbit_holes(request: Request):
-    holes = execute(
+    raw_holes = execute(
         """SELECT rh.id, rh.name, rh.description, rh.priority_score,
                   rh.last_researched_at, rh.status, rh.created_at,
                   COUNT(DISTINCT rhc.conversation_id) as conv_count,
@@ -122,6 +158,7 @@ async def list_rabbit_holes(request: Request):
            ORDER BY rh.priority_score DESC""",
         fetch=True,
     )
+    holes = sorted(_dedupe_rabbit_holes(raw_holes), key=lambda h: (h.get("priority_score") or 0), reverse=True)
     return templates.TemplateResponse("rabbit_holes.html", {
         "request": request,
         "holes": holes or [],
